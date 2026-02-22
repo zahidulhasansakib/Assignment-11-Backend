@@ -1146,7 +1146,7 @@ app.get("/payments/:id", async (req, res) => {
 
 
 
-//  TUITION PAYMENT + APPROVAL 
+
 
 // Create Stripe Checkout for Tuition Payment
 app.post("/create-tuition-payment", async (req, res) => {
