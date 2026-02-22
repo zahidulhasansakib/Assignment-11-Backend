@@ -127,6 +127,117 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
+    // backend/server.js - এই অংশগুলো যোগ করুন
+
+    const { generateToken } = require("./utils/jwtUtils");
+    const {
+      authenticateToken,
+      authorizeRoles,
+    } = require("./middleware/authMiddleware");
+
+    // backend/server.js - আপনার login route (run() function এর ভিতরে)
+
+   app.post("/login", async (req, res) => {
+     try {
+       const { email, password } = req.body;
+       console.log("========== LOGIN DEBUG ==========");
+       console.log("1. Email received:", email);
+       console.log(
+         "2. Password received:",
+         password ? "✓ Provided" : "✗ Missing",
+       );
+       console.log("3. Password length:", password?.length);
+
+       // ইউজার খুঁজুন
+       console.log("4. Searching user in database...");
+       const user = await userCollections.findOne({ email });
+
+       console.log("5. User found:", user ? "✓ Yes" : "✗ No");
+
+       if (!user) {
+         console.log("6. ❌ User not found");
+         return res.status(401).json({
+           success: false,
+           message: "Email বা password ঠিক নেই",
+         });
+       }
+
+       console.log("7. User email:", user.email);
+       console.log("8. User role:", user.role);
+       console.log(
+         "9. Password field exists:",
+         user.hasOwnProperty("password") ? "✓ Yes" : "✗ No",
+       );
+       console.log("10. Password value type:", typeof user.password);
+       console.log("11. Password length:", user.password?.length);
+       console.log(
+         "12. Password preview:",
+         user.password ? user.password.substring(0, 20) + "..." : "null",
+       );
+
+       // পাসওয়ার্ড চেক করার আগে ভ্যালিডেশন
+       if (!user.password) {
+         console.log("13. ❌ Password field is empty!");
+         return res.status(500).json({
+           success: false,
+           message: "User password not found in database",
+         });
+       }
+
+       if (!password) {
+         console.log("14. ❌ Password not provided in request");
+         return res.status(400).json({
+           success: false,
+           message: "Password is required",
+         });
+       }
+
+       // bcrypt compare
+       console.log("15. 🔐 Calling bcrypt.compare...");
+       console.log("    - Input password length:", password.length);
+       console.log("    - Stored hash length:", user.password.length);
+
+       const isPasswordValid = await bcrypt.compare(password, user.password);
+
+       console.log("16. ✅ bcrypt.compare result:", isPasswordValid);
+
+       if (!isPasswordValid) {
+         console.log("17. ❌ Password invalid");
+         return res.status(401).json({
+           success: false,
+           message: "Email বা password ঠিক নেই",
+         });
+       }
+
+       // JWT Token তৈরি করুন
+       console.log("18. 🔑 Generating token...");
+       const token = generateToken(user);
+       console.log("19. ✅ Token generated");
+
+       const { password: pwd, ...userWithoutPassword } = user;
+
+       console.log("20. ✅ Login successful for:", email);
+       console.log("================================");
+
+       res.json({
+         success: true,
+         message: "Login successful",
+         token,
+         user: userWithoutPassword,
+       });
+     } catch (error) {
+       console.error("❌ ERROR CAUGHT:", error);
+       console.error("❌ Error name:", error.name);
+       console.error("❌ Error message:", error.message);
+       console.error("❌ Error stack:", error.stack);
+
+       res.status(500).json({
+         success: false,
+         message: "Login failed",
+         error: error.message,
+       });
+     }
+   });
 
     // GET User by Email
     app.get("/users/:email", async (req, res) => {
@@ -1111,85 +1222,137 @@ app.post("/create-tuition-payment", async (req, res) => {
   }
 });
 
+// backend/server.js - এই route টি আপডেট করুন
+
 // Payment Success Webhook/Endpoint
 app.post('/tuition-payment-success', async (req, res) => {
   try {
-    const { session_id, applicationId } = req.query;
+    const { session_id, applicationId } = req.body;
+    
+    console.log("📩 Payment success webhook received:", { session_id, applicationId });
+
+    if (!session_id || !applicationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session ID and Application ID are required"
+      });
+    }
 
     // Retrieve session from Stripe
     const session = await stripe.checkout.sessions.retrieve(session_id);
+    console.log("✅ Stripe session retrieved:", session.id);
+    console.log("Payment status:", session.payment_status);
 
-    if (session.payment_status === 'paid') {
-      // Get metadata
-      const { applicationId: metaAppId, tuitionId, studentEmail, tutorEmail, amount } = session.metadata;
-
-      // 1. Update application status to 'approved'
-      await applicationCollections.updateOne(
-        { _id: new ObjectId(metaAppId) },
-        { 
-          $set: { 
-            status: 'approved',
-            paymentStatus: 'paid',
-            paidAt: new Date(),
-            transactionId: session.payment_intent
-          } 
-        }
-      );
-
-      // 2. Update tuition status
-      await tuitionCollections.updateOne(
-        { _id: new ObjectId(tuitionId) },
-        { 
-          $set: { 
-            status: 'approved',
-            tutorEmail: tutorEmail,
-            approvedAt: new Date(),
-            paymentCompleted: true
-          } 
-        }
-      );
-
-      // 3. Reject all other pending applications for this tuition
-      await applicationCollections.updateMany(
-        {
-          tuitionId: tuitionId,
-          _id: { $ne: new ObjectId(metaAppId) },
-          status: "pending"
-        },
-        {
-          $set: {
-            status: 'rejected',
-            rejectedReason: 'Another tutor was selected',
-            updatedAt: new Date()
-          }
-        }
-      );
-
-      // 4. Record payment
-      const paymentRecord = {
-        studentEmail,
-        tutorEmail,
-        tuitionId,
-        applicationId: metaAppId,
-        amount: parseFloat(amount),
-        transactionId: session.payment_intent,
-        paymentMethod: 'card',
-        status: 'completed',
-        paymentDate: new Date(),
-        createdAt: new Date()
-      };
-
-      await paymentsCollections.insertOne(paymentRecord);
-
-      // Redirect to success page
-      res.redirect(`${process.env.SITE_DOMAIN}/dashboard/applied-tutors?payment=success`);
-    } else {
-      res.redirect(`${process.env.SITE_DOMAIN}/dashboard/applied-tutors?payment=failed`);
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({
+        success: false,
+        message: "Payment not completed"
+      });
     }
+
+    // Get metadata from session
+    const { 
+      applicationId: metaAppId, 
+      tuitionId, 
+      studentEmail, 
+      tutorEmail, 
+      amount 
+    } = session.metadata;
+
+    console.log("📦 Metadata:", { metaAppId, tuitionId, studentEmail, tutorEmail, amount });
+
+    // Check if payment already exists
+    const existingPayment = await paymentsCollections.findOne({ 
+      transactionId: session.payment_intent 
+    });
+
+    if (existingPayment) {
+      console.log("⚠️ Payment already recorded:", existingPayment);
+      return res.json({
+        success: true,
+        message: "Payment already processed",
+        payment: existingPayment
+      });
+    }
+
+    // 1. Update application status to 'approved'
+    await applicationCollections.updateOne(
+      { _id: new ObjectId(metaAppId) },
+      { 
+        $set: { 
+          status: 'approved',
+          paymentStatus: 'paid',
+          paidAt: new Date(),
+          transactionId: session.payment_intent
+        } 
+      }
+    );
+    console.log("✅ Application updated");
+
+    // 2. Update tuition status
+    await tuitionCollections.updateOne(
+      { _id: new ObjectId(tuitionId) },
+      { 
+        $set: { 
+          status: 'approved',
+          tutorEmail: tutorEmail,
+          approvedAt: new Date(),
+          paymentCompleted: true
+        } 
+      }
+    );
+    console.log("✅ Tuition updated");
+
+    // 3. Reject all other pending applications for this tuition
+    await applicationCollections.updateMany(
+      {
+        tuitionId: tuitionId,
+        _id: { $ne: new ObjectId(metaAppId) },
+        status: "pending"
+      },
+      {
+        $set: {
+          status: 'rejected',
+          rejectedReason: 'Another tutor was selected',
+          updatedAt: new Date()
+        }
+      }
+    );
+    console.log("✅ Other applications rejected");
+
+    // 4. Record payment
+    const paymentRecord = {
+      studentEmail,
+      tutorEmail,
+      tuitionId,
+      applicationId: metaAppId,
+      amount: parseFloat(amount),
+      transactionId: session.payment_intent,
+      paymentMethod: 'card',
+      status: 'completed',
+      paymentDate: new Date(),
+      createdAt: new Date()
+    };
+
+    const result = await paymentsCollections.insertOne(paymentRecord);
+    console.log("✅ Payment recorded:", result.insertedId);
+
+    res.json({
+      success: true,
+      message: "Payment processed successfully",
+      payment: {
+        ...paymentRecord,
+        _id: result.insertedId
+      }
+    });
 
   } catch (error) {
     console.error("❌ Payment success error:", error);
-    res.redirect(`${process.env.SITE_DOMAIN}/dashboard/applied-tutors?payment=error`);
+    res.status(500).json({
+      success: false,
+      message: "Failed to process payment",
+      error: error.message
+    });
   }
 });
 
