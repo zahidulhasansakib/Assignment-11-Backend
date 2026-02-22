@@ -53,7 +53,7 @@ const client = new MongoClient(uri, {
 
 // Global collections
 let userCollections,
-  donationCollections,
+ 
   paymentsCollections,
   tuitionCollections,
   applicationCollections;
@@ -64,7 +64,7 @@ async function run() {
     const database = client.db("missionscic11DB");
 
     userCollections = database.collection("user");
-    donationCollections = database.collection("donationRequests");
+    
     paymentsCollections = database.collection("payments");
     tuitionCollections = database.collection("tuitions");
     applicationCollections = database.collection("applications"); // নতুন collection
@@ -1434,20 +1434,7 @@ app.put("/api/update-user-status", async (req, res) => {
   }
 });
 
-// ================= HEALTH CHECK =================
-app.get("/health-check", (req, res) => {
-  res.json({
-    status: "healthy",
-    timestamp: new Date(),
-    collections: {
-      users: !!userCollections,
-      donations: !!donationCollections,
-      payments: !!paymentsCollections,
-      tuitions: !!tuitionCollections,
-      applications: !!applicationCollections,
-    },
-  });
-});
+
 // ================= PUBLIC TUITIONS API FOR HOME PAGE =================
 
 // ================= GET ALL TUITIONS FOR ADMIN =================
@@ -1983,7 +1970,7 @@ app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📚 Database: missionscic11DB`);
   console.log(
-    `📦 Collections: user, donationRequests, payments, tuitions, applications`,
+    `📦 Collections: user, payments, tuitions, applications`,
   );
   console.log(`🔗 Health Check: http://localhost:${port}/health-check`);
 });
