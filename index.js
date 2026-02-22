@@ -359,124 +359,7 @@ async function run() {
       }
     });
 
-    // ================= DONATION REQUEST API =================
-    app.post("/donationRequests", verifyFBToken, async (req, res) => {
-      try {
-        const {
-          requesterName,
-          requesterEmail,
-          recipientName,
-          districtName,
-          upazilaName,
-          hospital,
-          address,
-          bloodGroup,
-          donationDate,
-          donationTime,
-          requestMessage,
-        } = req.body;
 
-        if (
-          !requesterName ||
-          !requesterEmail ||
-          !recipientName ||
-          !districtName ||
-          !upazilaName ||
-          !hospital ||
-          !address ||
-          !bloodGroup ||
-          !donationDate ||
-          !donationTime ||
-          !requestMessage
-        ) {
-          return res.status(400).send({ message: "Missing required fields" });
-        }
-
-        const donationRequest = {
-          requesterName,
-          requesterEmail,
-          recipientName,
-          recipientDistrict: districtName,
-          recipientUpazila: upazilaName,
-          hospital,
-          address,
-          bloodGroup,
-          donationDate,
-          donationTime,
-          requestMessage,
-          status: "pending",
-          donorInfo: null,
-          createdAt: new Date(),
-        };
-
-        const result = await donationCollections.insertOne(donationRequest);
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Create donation request error:", error);
-        res.status(500).send({ message: "Failed to create donation request" });
-      }
-    });
-
-    app.get("/donationRequests", async (req, res) => {
-      try {
-        const requests = await donationCollections.find().toArray();
-        res.send(requests);
-      } catch (error) {
-        console.error("❌ Get donation requests error:", error);
-        res.status(500).send({ message: "Failed to get donation requests" });
-      }
-    });
-
-    app.delete("/donationRequests/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        const result = await donationCollections.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Delete donation request error:", error);
-        res.status(500).send({ message: "Failed to delete donation request" });
-      }
-    });
-
-    app.put("/donationRequests/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        const updatedData = req.body;
-
-        const result = await donationCollections.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updatedData },
-        );
-
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Update donation request error:", error);
-        res.status(500).send({ message: "Failed to update donation request" });
-      }
-    });
-  } finally {
-    // nothing
-  }
-}
-
-run().catch(console.dir);
-
-app.get("/my-request", verifyFBToken, async (req, res) => {
-  const email = req.decoded_email;
-  const size = Number(req.query.size);
-  const page = Number(req.query.page);
-  const query = { requesterEmail: email };
-
-  const result = await donationCollections
-    .find(query)
-    .limit(size)
-    .skip(size * page)
-    .toArray();
-  const totalRequest = await donationCollections.countDocuments(query);
-  res.send({ request: result, totalRequest });
-});
 
 // ================= TUITION MANAGEMENT APIs =================
 
@@ -1434,8 +1317,7 @@ app.put("/api/update-user-status", async (req, res) => {
   }
 });
 
-
-// ================= PUBLIC TUITIONS API FOR HOME PAGE =================
+=
 
 // ================= GET ALL TUITIONS FOR ADMIN =================
 app.get("/all-tuitions", async (req, res) => {
