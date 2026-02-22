@@ -53,7 +53,7 @@ const client = new MongoClient(uri, {
 
 // Global collections
 let userCollections,
- 
+  donationCollections,
   paymentsCollections,
   tuitionCollections,
   applicationCollections;
@@ -64,7 +64,7 @@ async function run() {
     const database = client.db("missionscic11DB");
 
     userCollections = database.collection("user");
-    
+    donationCollections = database.collection("donationRequests");
     paymentsCollections = database.collection("payments");
     tuitionCollections = database.collection("tuitions");
     applicationCollections = database.collection("applications"); // নতুন collection
@@ -137,107 +137,107 @@ async function run() {
 
     // backend/server.js - আপনার login route (run() function এর ভিতরে)
 
-   app.post("/login", async (req, res) => {
-     try {
-       const { email, password } = req.body;
-       console.log("========== LOGIN DEBUG ==========");
-       console.log("1. Email received:", email);
-       console.log(
-         "2. Password received:",
-         password ? "✓ Provided" : "✗ Missing",
-       );
-       console.log("3. Password length:", password?.length);
+    app.post("/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+        console.log("========== LOGIN DEBUG ==========");
+        console.log("1. Email received:", email);
+        console.log(
+          "2. Password received:",
+          password ? "✓ Provided" : "✗ Missing",
+        );
+        console.log("3. Password length:", password?.length);
 
-       // ইউজার খুঁজুন
-       console.log("4. Searching user in database...");
-       const user = await userCollections.findOne({ email });
+        // ইউজার খুঁজুন
+        console.log("4. Searching user in database...");
+        const user = await userCollections.findOne({ email });
 
-       console.log("5. User found:", user ? "✓ Yes" : "✗ No");
+        console.log("5. User found:", user ? "✓ Yes" : "✗ No");
 
-       if (!user) {
-         console.log("6. ❌ User not found");
-         return res.status(401).json({
-           success: false,
-           message: "Email বা password ঠিক নেই",
-         });
-       }
+        if (!user) {
+          console.log("6. ❌ User not found");
+          return res.status(401).json({
+            success: false,
+            message: "Email বা password ঠিক নেই",
+          });
+        }
 
-       console.log("7. User email:", user.email);
-       console.log("8. User role:", user.role);
-       console.log(
-         "9. Password field exists:",
-         user.hasOwnProperty("password") ? "✓ Yes" : "✗ No",
-       );
-       console.log("10. Password value type:", typeof user.password);
-       console.log("11. Password length:", user.password?.length);
-       console.log(
-         "12. Password preview:",
-         user.password ? user.password.substring(0, 20) + "..." : "null",
-       );
+        console.log("7. User email:", user.email);
+        console.log("8. User role:", user.role);
+        console.log(
+          "9. Password field exists:",
+          user.hasOwnProperty("password") ? "✓ Yes" : "✗ No",
+        );
+        console.log("10. Password value type:", typeof user.password);
+        console.log("11. Password length:", user.password?.length);
+        console.log(
+          "12. Password preview:",
+          user.password ? user.password.substring(0, 20) + "..." : "null",
+        );
 
-       // পাসওয়ার্ড চেক করার আগে ভ্যালিডেশন
-       if (!user.password) {
-         console.log("13. ❌ Password field is empty!");
-         return res.status(500).json({
-           success: false,
-           message: "User password not found in database",
-         });
-       }
+        // পাসওয়ার্ড চেক করার আগে ভ্যালিডেশন
+        if (!user.password) {
+          console.log("13. ❌ Password field is empty!");
+          return res.status(500).json({
+            success: false,
+            message: "User password not found in database",
+          });
+        }
 
-       if (!password) {
-         console.log("14. ❌ Password not provided in request");
-         return res.status(400).json({
-           success: false,
-           message: "Password is required",
-         });
-       }
+        if (!password) {
+          console.log("14. ❌ Password not provided in request");
+          return res.status(400).json({
+            success: false,
+            message: "Password is required",
+          });
+        }
 
-       // bcrypt compare
-       console.log("15. 🔐 Calling bcrypt.compare...");
-       console.log("    - Input password length:", password.length);
-       console.log("    - Stored hash length:", user.password.length);
+        // bcrypt compare
+        console.log("15. 🔐 Calling bcrypt.compare...");
+        console.log("    - Input password length:", password.length);
+        console.log("    - Stored hash length:", user.password.length);
 
-       const isPasswordValid = await bcrypt.compare(password, user.password);
+        const isPasswordValid = await bcrypt.compare(password, user.password);
 
-       console.log("16. ✅ bcrypt.compare result:", isPasswordValid);
+        console.log("16. ✅ bcrypt.compare result:", isPasswordValid);
 
-       if (!isPasswordValid) {
-         console.log("17. ❌ Password invalid");
-         return res.status(401).json({
-           success: false,
-           message: "Email বা password ঠিক নেই",
-         });
-       }
+        if (!isPasswordValid) {
+          console.log("17. ❌ Password invalid");
+          return res.status(401).json({
+            success: false,
+            message: "Email বা password ঠিক নেই",
+          });
+        }
 
-       // JWT Token তৈরি করুন
-       console.log("18. 🔑 Generating token...");
-       const token = generateToken(user);
-       console.log("19. ✅ Token generated");
+        // JWT Token তৈরি করুন
+        console.log("18. 🔑 Generating token...");
+        const token = generateToken(user);
+        console.log("19. ✅ Token generated");
 
-       const { password: pwd, ...userWithoutPassword } = user;
+        const { password: pwd, ...userWithoutPassword } = user;
 
-       console.log("20. ✅ Login successful for:", email);
-       console.log("================================");
+        console.log("20. ✅ Login successful for:", email);
+        console.log("================================");
 
-       res.json({
-         success: true,
-         message: "Login successful",
-         token,
-         user: userWithoutPassword,
-       });
-     } catch (error) {
-       console.error("❌ ERROR CAUGHT:", error);
-       console.error("❌ Error name:", error.name);
-       console.error("❌ Error message:", error.message);
-       console.error("❌ Error stack:", error.stack);
+        res.json({
+          success: true,
+          message: "Login successful",
+          token,
+          user: userWithoutPassword,
+        });
+      } catch (error) {
+        console.error("❌ ERROR CAUGHT:", error);
+        console.error("❌ Error name:", error.name);
+        console.error("❌ Error message:", error.message);
+        console.error("❌ Error stack:", error.stack);
 
-       res.status(500).json({
-         success: false,
-         message: "Login failed",
-         error: error.message,
-       });
-     }
-   });
+        res.status(500).json({
+          success: false,
+          message: "Login failed",
+          error: error.message,
+        });
+      }
+    });
 
     // GET User by Email
     app.get("/users/:email", async (req, res) => {
@@ -272,6 +272,91 @@ async function run() {
         res.status(500).json({
           success: false,
           message: "Failed to fetch user profile",
+        });
+      }
+    });
+
+    // backend/server.js - Register Route
+
+    // backend/server.js - register route এ console logs
+
+    app.post("/register", async (req, res) => {
+      try {
+        const {
+          name,
+          email,
+          password,
+          role,
+          phone,
+          district,
+          upazila,
+          photoURL,
+          uid,
+        } = req.body;
+
+        console.log("========== REGISTER DEBUG ==========");
+        console.log("1. Received data:", {
+          name,
+          email,
+          role,
+          phone,
+          hasPassword: !!password,
+          hasUid: !!uid,
+        });
+
+        // Check if user exists
+        const existingUser = await userCollections.findOne({ email });
+        if (existingUser) {
+          return res.status(409).json({
+            success: false,
+            message: "User already exists",
+          });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Create user
+        const newUser = {
+          name,
+          email,
+          password: hashedPassword,
+          role: role || "student",
+          phone,
+          districtName: district || "",
+          upazilaName: upazila || "",
+          photoURL: photoURL || "",
+          uid,
+          status: "active",
+          createdAt: new Date(),
+        };
+
+        const result = await userCollections.insertOne(newUser);
+        console.log("✅ User created with ID:", result.insertedId);
+
+        // Generate token
+        const token = generateToken({ ...newUser, _id: result.insertedId });
+
+        res.status(201).json({
+          success: true,
+          message: "Registration successful",
+          token,
+          user: {
+            _id: result.insertedId,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+            phone: newUser.phone,
+            photoURL: newUser.photoURL,
+            status: newUser.status,
+          },
+        });
+      } catch (error) {
+        console.error("❌ REGISTER ERROR:", error);
+        res.status(500).json({
+          success: false,
+          message: "Registration failed",
+          error: error.message,
         });
       }
     });
@@ -359,7 +444,124 @@ async function run() {
       }
     });
 
+    // ================= DONATION REQUEST API =================
+    app.post("/donationRequests", verifyFBToken, async (req, res) => {
+      try {
+        const {
+          requesterName,
+          requesterEmail,
+          recipientName,
+          districtName,
+          upazilaName,
+          hospital,
+          address,
+          bloodGroup,
+          donationDate,
+          donationTime,
+          requestMessage,
+        } = req.body;
 
+        if (
+          !requesterName ||
+          !requesterEmail ||
+          !recipientName ||
+          !districtName ||
+          !upazilaName ||
+          !hospital ||
+          !address ||
+          !bloodGroup ||
+          !donationDate ||
+          !donationTime ||
+          !requestMessage
+        ) {
+          return res.status(400).send({ message: "Missing required fields" });
+        }
+
+        const donationRequest = {
+          requesterName,
+          requesterEmail,
+          recipientName,
+          recipientDistrict: districtName,
+          recipientUpazila: upazilaName,
+          hospital,
+          address,
+          bloodGroup,
+          donationDate,
+          donationTime,
+          requestMessage,
+          status: "pending",
+          donorInfo: null,
+          createdAt: new Date(),
+        };
+
+        const result = await donationCollections.insertOne(donationRequest);
+        res.send(result);
+      } catch (error) {
+        console.error("❌ Create donation request error:", error);
+        res.status(500).send({ message: "Failed to create donation request" });
+      }
+    });
+
+    app.get("/donationRequests", async (req, res) => {
+      try {
+        const requests = await donationCollections.find().toArray();
+        res.send(requests);
+      } catch (error) {
+        console.error("❌ Get donation requests error:", error);
+        res.status(500).send({ message: "Failed to get donation requests" });
+      }
+    });
+
+    app.delete("/donationRequests/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await donationCollections.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      } catch (error) {
+        console.error("❌ Delete donation request error:", error);
+        res.status(500).send({ message: "Failed to delete donation request" });
+      }
+    });
+
+    app.put("/donationRequests/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedData = req.body;
+
+        const result = await donationCollections.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedData },
+        );
+
+        res.send(result);
+      } catch (error) {
+        console.error("❌ Update donation request error:", error);
+        res.status(500).send({ message: "Failed to update donation request" });
+      }
+    });
+  } finally {
+    // nothing
+  }
+}
+
+run().catch(console.dir);
+
+app.get("/my-request", verifyFBToken, async (req, res) => {
+  const email = req.decoded_email;
+  const size = Number(req.query.size);
+  const page = Number(req.query.page);
+  const query = { requesterEmail: email };
+
+  const result = await donationCollections
+    .find(query)
+    .limit(size)
+    .skip(size * page)
+    .toArray();
+  const totalRequest = await donationCollections.countDocuments(query);
+  res.send({ request: result, totalRequest });
+});
 
 // ================= TUITION MANAGEMENT APIs =================
 
@@ -1317,7 +1519,21 @@ app.put("/api/update-user-status", async (req, res) => {
   }
 });
 
-=
+// ================= HEALTH CHECK =================
+app.get("/health-check", (req, res) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date(),
+    collections: {
+      users: !!userCollections,
+      donations: !!donationCollections,
+      payments: !!paymentsCollections,
+      tuitions: !!tuitionCollections,
+      applications: !!applicationCollections,
+    },
+  });
+});
+// ================= PUBLIC TUITIONS API FOR HOME PAGE =================
 
 // ================= GET ALL TUITIONS FOR ADMIN =================
 app.get("/all-tuitions", async (req, res) => {
@@ -1330,11 +1546,11 @@ app.get("/all-tuitions", async (req, res) => {
       return res.status(500).json([]);
     }
 
-    // Get ALL tuitions - 
+    // Get ALL tuitions - সবগুলো tuition দেখাবে (pending, approved, rejected)
     const tuitions = await tuitionCollections
-      .find({})  
+      .find({})  // কোন filter নেই - সবগুলো ডকুমেন্ট
       .sort({ createdAt: -1 }) // Latest first
-      .toArray(); 
+      .toArray(); // সবগুলো আনুন, limit না দিয়ে
     
     console.log(`✅ Found ${tuitions.length} tuitions for admin`);
     console.log("Status breakdown:", {
@@ -1852,7 +2068,7 @@ app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📚 Database: missionscic11DB`);
   console.log(
-    `📦 Collections: user, payments, tuitions, applications`,
+    `📦 Collections: user,  payments, tuitions, applications`,
   );
-  console.log(`🔗 Health Check: http://localhost:${port}/health-check`);
+ 
 });
