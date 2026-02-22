@@ -1214,9 +1214,8 @@ app.post("/create-tuition-payment", async (req, res) => {
   }
 });
 
-// backend/server.js - এই route টি আপডেট করুন
 
-// Payment Success Webhook/Endpoint
+// Payment Success Endpoint
 app.post('/tuition-payment-success', async (req, res) => {
   try {
     const { session_id, applicationId } = req.body;
