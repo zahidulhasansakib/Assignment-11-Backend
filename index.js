@@ -1478,7 +1478,7 @@ app.get("/public-tuitions", async (req, res) => {
   }
 });
 
-// ================= TUTOR APPLICATIONS APIs =================
+
 
 // GET Tutor's Applications
 app.get("/tutor-applications", async (req, res) => {
@@ -1897,7 +1897,7 @@ app.delete("/users/:email", async (req, res) => {
     });
   }
 });
-// ================= ADMIN TUITION MANAGEMENT =================
+
 
 // GET applications for a specific tuition
 app.get("/tuition-applications/:tuitionId", async (req, res) => {
