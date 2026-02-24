@@ -1395,7 +1395,7 @@ app.get("/health-check", (req, res) => {
 });
 
 
-// ================= GET ALL TUITIONS FOR ADMIN =================
+//  GET ALL TUITIONS FOR ADMIN 
 app.get("/all-tuitions", async (req, res) => {
   try {
     console.log("📢 Fetching all tuitions for admin dashboard...");
@@ -1406,11 +1406,11 @@ app.get("/all-tuitions", async (req, res) => {
       return res.status(500).json([]);
     }
 
-    // Get ALL tuitions - সবগুলো tuition দেখাবে (pending, approved, rejected)
+    // Get ALL tuitions  (pending, approved, rejected)
     const tuitions = await tuitionCollections
-      .find({})  // কোন filter নেই - সবগুলো ডকুমেন্ট
+      .find({}) 
       .sort({ createdAt: -1 }) // Latest first
-      .toArray(); // সবগুলো আনুন, limit না দিয়ে
+      .toArray(); 
     
     console.log(`✅ Found ${tuitions.length} tuitions for admin`);
     console.log("Status breakdown:", {
