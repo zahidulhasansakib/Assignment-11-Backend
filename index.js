@@ -53,7 +53,7 @@ const client = new MongoClient(uri, {
 
 // Global collections
 let userCollections,
-
+  donationCollections,
   paymentsCollections,
   tuitionCollections,
   applicationCollections;
@@ -62,7 +62,9 @@ async function run() {
   try {
     await client.connect();
     const database = client.db("missionscic11DB");
+
     userCollections = database.collection("user");
+    donationCollections = database.collection("donationRequests");
     paymentsCollections = database.collection("payments");
     tuitionCollections = database.collection("tuitions");
     applicationCollections = database.collection("applications"); // নতুন collection
@@ -863,58 +865,212 @@ app.put("/applications/:id", async (req, res) => {
   }
 });
 
-// ================= PAYMENT APIs =================
+// ================= TUITION PAYMENT APIs =================
 
-app.post("/create-payment-checkout", async (req, res) => {
-  const information = req.body;
-  const amount = parseInt(information.donateAmount) * 100;
+// Create Stripe Checkout for Tuition Payment
+app.post("/create-tuition-payment", async (req, res) => {
+  try {
+    const { studentEmail, tuitionId, tutorEmail, amount, applicationId } = req.body;
 
-  const session = await stripe.checkout.sessions.create({
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          unit_amount: amount,
-          product_data: {
-            name: "Please Donate",
+    console.log("📩 Tuition payment request:", {
+      studentEmail,
+      tuitionId,
+      tutorEmail,
+      amount,
+      applicationId
+    });
+
+    // Get tuition details
+    const tuition = await tuitionCollections.findOne({
+      _id: new ObjectId(tuitionId)
+    });
+
+    if (!tuition) {
+      return res.status(404).json({
+        success: false,
+        message: "Tuition not found"
+      });
+    }
+
+    // Get tutor details
+    const tutor = await userCollections.findOne({
+      email: tutorEmail
+    });
+
+    // Create Stripe session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'bdt',
+            product_data: {
+              name: `Tuition Payment - ${tuition.subject}`,
+              description: `Payment for ${tutor?.name || tutorEmail}`,
+              images: [tutor?.photoURL || 'https://via.placeholder.com/150'],
+            },
+            unit_amount: amount * 100,
           },
+          quantity: 1,
         },
-        quantity: 1,
-      },
-    ],
-    mode: "payment",
-    metadata: {
-      donorName: information?.donorName,
-    },
-    customer_email: information?.donorEmail,
-    success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.SITE_DOMAIN}/payment-cancel`,
-  });
-  res.send({ url: session.url });
+      ],
+      mode: 'payment',
+      success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}&applicationId=${applicationId}`,
+      cancel_url: `${process.env.SITE_DOMAIN}/payment-cancel`,
+      customer_email: studentEmail,
+      metadata: {
+        applicationId,
+        tuitionId,
+        studentEmail,
+        tutorEmail,
+        amount: amount.toString()
+      }
+    });
+
+    console.log("✅ Stripe session created:", session.id);
+    console.log("🔗 Checkout URL:", session.url);
+
+    res.json({
+      success: true,
+      url: session.url
+    });
+
+  } catch (error) {
+    console.error("❌ Create tuition payment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create payment session",
+      error: error.message
+    });
+  }
 });
 
-app.post("/success-payment", async (req, res) => {
-  const { session_id } = req.query;
-  const session = await stripe.checkout.sessions.retrieve(session_id);
-  console.log(session);
-  const transactionId = session.payment_intent;
+// Payment Success Webhook
+app.post('/tuition-payment-success', async (req, res) => {
+  try {
+    const { session_id, applicationId } = req.body;
 
-  const isPaymentExist = await paymentsCollections.findOne({ transactionId });
-  if (isPaymentExist) {
-    return;
-  }
+    console.log("📩 Payment success webhook received:", { session_id, applicationId });
 
-  if (session.payment_status == "paid") {
-    const paymentInfo = {
-      amount: session.amount_total / 100,
-      currency: session.currency,
-      donorEmail: session.customer_email,
-      transactionId,
-      payment_status: session.payment_status,
-      paidAt: new Date(),
+    if (!session_id || !applicationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session ID and Application ID are required"
+      });
+    }
+
+    // Validate session_id
+    if (typeof session_id !== 'string' || !session_id.startsWith('cs_')) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid session ID format"
+      });
+    }
+
+    // Retrieve session from Stripe
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    console.log("✅ Stripe session retrieved:", session.id);
+    console.log("Payment status:", session.payment_status);
+
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({
+        success: false,
+        message: "Payment not completed"
+      });
+    }
+
+    // Check if payment already exists
+    const existingPayment = await paymentsCollections.findOne({
+      transactionId: session.payment_intent
+    });
+
+    if (existingPayment) {
+      console.log("⚠️ Payment already recorded:", existingPayment);
+      return res.json({
+        success: true,
+        message: "Payment already processed",
+        payment: existingPayment
+      });
+    }
+
+    // Update application status
+    await applicationCollections.updateOne(
+      { _id: new ObjectId(applicationId) },
+      {
+        $set: {
+          status: 'approved',
+          paymentStatus: 'paid',
+          paidAt: new Date(),
+          transactionId: session.payment_intent
+        }
+      }
+    );
+    console.log("✅ Application updated");
+
+    // Update tuition status
+    await tuitionCollections.updateOne(
+      { _id: new ObjectId(session.metadata.tuitionId) },
+      {
+        $set: {
+          status: 'approved',
+          tutorEmail: session.metadata.tutorEmail,
+          approvedAt: new Date(),
+          paymentCompleted: true
+        }
+      }
+    );
+    console.log("✅ Tuition updated");
+
+    // Reject other applications
+    await applicationCollections.updateMany(
+      {
+        tuitionId: session.metadata.tuitionId,
+        _id: { $ne: new ObjectId(applicationId) },
+        status: "pending"
+      },
+      {
+        $set: {
+          status: 'rejected',
+          rejectedReason: 'Another tutor was selected',
+          updatedAt: new Date()
+        }
+      }
+    );
+    console.log("✅ Other applications rejected");
+
+    // Record payment
+    const paymentRecord = {
+      studentEmail: session.metadata.studentEmail,
+      tutorEmail: session.metadata.tutorEmail,
+      tuitionId: session.metadata.tuitionId,
+      applicationId,
+      amount: parseFloat(session.metadata.amount),
+      transactionId: session.payment_intent,
+      paymentMethod: 'card',
+      status: 'completed',
+      paymentDate: new Date(),
+      createdAt: new Date()
     };
-    const result = await paymentsCollections.insertOne(paymentInfo);
-    return res.send(result);
+
+    const result = await paymentsCollections.insertOne(paymentRecord);
+    console.log("✅ Payment recorded:", result.insertedId);
+
+    res.json({
+      success: true,
+      message: "Payment processed successfully",
+      payment: {
+        ...paymentRecord,
+        _id: result.insertedId
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Payment success error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to process payment",
+      error: error.message
+    });
   }
 });
 
@@ -949,94 +1105,50 @@ app.get("/payments", async (req, res) => {
   }
 });
 
-// POST Create New Payment
-app.post("/payments", async (req, res) => {
+// GET All Payments for Admin
+app.get("/all-payments", async (req, res) => {
   try {
-    const paymentData = req.body;
-
-    const requiredFields = [
-      "studentEmail",
-      "tuitionId",
-      "amount",
-      "paymentMethod",
-    ];
-    const missingFields = requiredFields.filter((field) => !paymentData[field]);
-
-    if (missingFields.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Missing required fields: ${missingFields.join(", ")}`,
-      });
-    }
-
-    const transactionId =
-      "TXN" +
-      Date.now() +
-      Math.random().toString(36).substr(2, 9).toUpperCase();
-
-    const payment = {
-      ...paymentData,
-      transactionId,
-      paymentDate: new Date(),
-      status: "completed",
-      createdAt: new Date(),
-    };
-
-    const result = await paymentsCollections.insertOne(payment);
-
-    res.status(201).json({
-      success: true,
-      message: "Payment recorded successfully!",
-      data: {
-        _id: result.insertedId,
-        ...payment,
-      },
-    });
-  } catch (error) {
-    console.error("❌ Create payment error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to record payment",
-    });
-  }
-});
-
-// GET Single Payment by ID
-app.get("/payments/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment ID",
-      });
-    }
-
-    const payment = await paymentsCollections.findOne({
-      _id: new ObjectId(id),
-    });
-
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
+    const payments = await paymentsCollections
+      .find({})
+      .sort({ paymentDate: -1 })
+      .toArray();
 
     res.json({
       success: true,
-      data: payment,
+      data: payments,
+      count: payments.length,
     });
   } catch (error) {
-    console.error("❌ Get payment error:", error);
+    console.error("❌ Get all payments error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch payment",
+      message: "Failed to fetch payments",
     });
   }
 });
 
+// GET Payment Status by Application
+app.get("/payment-status/:applicationId", async (req, res) => {
+  try {
+    const applicationId = req.params.applicationId;
+
+    const payment = await paymentsCollections.findOne({
+      applicationId
+    });
+
+    res.json({
+      success: true,
+      data: payment || null
+    });
+
+  } catch (error) {
+    console.error("❌ Get payment status error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch payment status",
+    });
+  }
+});
 
 
 // ================= TUITION PAYMENT + APPROVAL =================
@@ -1818,5 +1930,5 @@ app.listen(port, () => {
   console.log(
     `📦 Collections: user,  payments, tuitions, applications`,
   );
-  console.log(`🔗 Health Check: http://localhost:${port}/health-check`);
+  
 });
