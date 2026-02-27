@@ -4,12 +4,12 @@ require("dotenv").config();
 const bcrypt = require("bcryptjs");
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const stripe = require("stripe")(process.env.STRIPE_SECRATE);
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const crypto = require("crypto");
 const app = express();
 const port = process.env.PORT || 5000;
 
-// ================= MIDDLEWARE =================
+// === MIDDLEWARE ===
 app.use(cors());
 app.use(express.json());
 const admin = require("firebase-admin");
@@ -39,7 +39,7 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// ================= MONGODB =================
+//  MONGODB 
 const uri =
   "mongodb+srv://misssonscic11:sGlNB5GI6KRwpAZ4@cluster0.entyjty.mongodb.net/?appName=Cluster0";
 
@@ -60,7 +60,7 @@ let userCollections,
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const database = client.db("missionscic11DB");
 
     userCollections = database.collection("user");
@@ -71,19 +71,24 @@ async function run() {
 
     console.log("✅ MongoDB connected successfully!");
 
-    // ================= USER API =================
+app.get("/", (req, res) => {
+  res.json({ message: "Server is running" });
+});
+
+
+    //  USER API 
     app.post("/user", async (req, res) => {
       try {
         const {
           name,
           email,
           password,
-      
+
           photoURL,
           uid,
         } = req.body;
 
-        if (!email || !password ) {
+        if (!email || !password) {
           return res.status(400).send({ message: "Missing required fields" });
         }
 
@@ -113,6 +118,76 @@ async function run() {
       }
     });
 
+    // ================= REGISTER API =================
+    app.post("/register", async (req, res) => {
+      try {
+        const { name, email, password, role, phone, photoURL, uid } = req.body;
+
+        console.log("📝 Register attempt for:", email);
+
+        // Validate required fields
+        if (!email || !password || !name) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Missing required fields: name, email, password are required",
+          });
+        }
+
+        // Check if user already exists
+        const existingUser = await userCollections.findOne({ email });
+        if (existingUser) {
+          return res.status(409).json({
+            success: false,
+            message: "User already exists",
+          });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Create user object
+        const newUser = {
+          name,
+          email,
+          password: hashedPassword,
+          role: role || "student",
+          phone: phone || "",
+          photoURL: photoURL || "",
+          uid: uid || "",
+          status: "active",
+          createdAt: new Date(),
+        };
+
+        // Insert into database
+        const result = await userCollections.insertOne(newUser);
+        console.log("✅ User created with ID:", result.insertedId);
+
+        // Generate JWT token (make sure generateToken function is available)
+        const token = generateToken({ ...newUser, _id: result.insertedId });
+
+        // Remove password from response
+        const { password: pwd, ...userWithoutPassword } = newUser;
+
+        res.status(201).json({
+          success: true,
+          message: "Registration successful",
+          token,
+          user: {
+            ...userWithoutPassword,
+            _id: result.insertedId,
+          },
+        });
+      } catch (error) {
+        console.error("❌ Register error:", error);
+        res.status(500).json({
+          success: false,
+          message: "Registration failed",
+          error: error.message,
+        });
+      }
+    });
+
     app.get("/users", async (req, res) => {
       try {
         const result = await userCollections.find().toArray();
@@ -122,7 +197,6 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
-    // backend/server.js - এই অংশগুলো যোগ করুন
 
     const { generateToken } = require("./utils/jwtUtils");
     const {
@@ -130,109 +204,109 @@ async function run() {
       authorizeRoles,
     } = require("./middleware/authMiddleware");
 
-    // backend/server.js - আপনার login route (run() function এর ভিতরে)
+   
 
-   app.post("/login", async (req, res) => {
-     try {
-       const { email, password } = req.body;
-       console.log("========== LOGIN DEBUG ==========");
-       console.log("1. Email received:", email);
-       console.log(
-         "2. Password received:",
-         password ? "✓ Provided" : "✗ Missing",
-       );
-       console.log("3. Password length:", password?.length);
+    app.post("/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+        console.log("========== LOGIN DEBUG ==========");
+        console.log("1. Email received:", email);
+        console.log(
+          "2. Password received:",
+          password ? "✓ Provided" : "✗ Missing",
+        );
+        console.log("3. Password length:", password?.length);
 
-       // ইউজার খুঁজুন
-       console.log("4. Searching user in database...");
-       const user = await userCollections.findOne({ email });
+       
+        console.log("4. Searching user in database...");
+        const user = await userCollections.findOne({ email });
 
-       console.log("5. User found:", user ? "✓ Yes" : "✗ No");
+        console.log("5. User found:", user ? "✓ Yes" : "✗ No");
 
-       if (!user) {
-         console.log("6. ❌ User not found");
-         return res.status(401).json({
-           success: false,
-           message: "Email বা password ঠিক নেই",
-         });
-       }
+        if (!user) {
+          console.log("6. ❌ User not found");
+          return res.status(401).json({
+            success: false,
+            message: "Email বা password ঠিক নেই",
+          });
+        }
 
-       console.log("7. User email:", user.email);
-       console.log("8. User role:", user.role);
-       console.log(
-         "9. Password field exists:",
-         user.hasOwnProperty("password") ? "✓ Yes" : "✗ No",
-       );
-       console.log("10. Password value type:", typeof user.password);
-       console.log("11. Password length:", user.password?.length);
-       console.log(
-         "12. Password preview:",
-         user.password ? user.password.substring(0, 20) + "..." : "null",
-       );
+        console.log("7. User email:", user.email);
+        console.log("8. User role:", user.role);
+        console.log(
+          "9. Password field exists:",
+          user.hasOwnProperty("password") ? "✓ Yes" : "✗ No",
+        );
+        console.log("10. Password value type:", typeof user.password);
+        console.log("11. Password length:", user.password?.length);
+        console.log(
+          "12. Password preview:",
+          user.password ? user.password.substring(0, 20) + "..." : "null",
+        );
 
-       // পাসওয়ার্ড চেক করার আগে ভ্যালিডেশন
-       if (!user.password) {
-         console.log("13. ❌ Password field is empty!");
-         return res.status(500).json({
-           success: false,
-           message: "User password not found in database",
-         });
-       }
+       
+        if (!user.password) {
+          console.log("13. ❌ Password field is empty!");
+          return res.status(500).json({
+            success: false,
+            message: "User password not found in database",
+          });
+        }
 
-       if (!password) {
-         console.log("14. ❌ Password not provided in request");
-         return res.status(400).json({
-           success: false,
-           message: "Password is required",
-         });
-       }
+        if (!password) {
+          console.log("14. ❌ Password not provided in request");
+          return res.status(400).json({
+            success: false,
+            message: "Password is required",
+          });
+        }
 
-       // bcrypt compare
-       console.log("15. 🔐 Calling bcrypt.compare...");
-       console.log("    - Input password length:", password.length);
-       console.log("    - Stored hash length:", user.password.length);
+        // bcrypt compare
+        console.log("15. 🔐 Calling bcrypt.compare...");
+        console.log("    - Input password length:", password.length);
+        console.log("    - Stored hash length:", user.password.length);
 
-       const isPasswordValid = await bcrypt.compare(password, user.password);
+        const isPasswordValid = await bcrypt.compare(password, user.password);
 
-       console.log("16. ✅ bcrypt.compare result:", isPasswordValid);
+        console.log("16. ✅ bcrypt.compare result:", isPasswordValid);
 
-       if (!isPasswordValid) {
-         console.log("17. ❌ Password invalid");
-         return res.status(401).json({
-           success: false,
-           message: "Email বা password ঠিক নেই",
-         });
-       }
+        if (!isPasswordValid) {
+          console.log("17. ❌ Password invalid");
+          return res.status(401).json({
+            success: false,
+            message: "Email বা password ঠিক নেই",
+          });
+        }
 
-       // JWT Token তৈরি করুন
-       console.log("18. 🔑 Generating token...");
-       const token = generateToken(user);
-       console.log("19. ✅ Token generated");
+        // JWT Token 
+        console.log("18. 🔑 Generating token...");
+        const token = generateToken(user);
+        console.log("19. ✅ Token generated");
 
-       const { password: pwd, ...userWithoutPassword } = user;
+        const { password: pwd, ...userWithoutPassword } = user;
 
-       console.log("20. ✅ Login successful for:", email);
-       console.log("================================");
+        console.log("20. ✅ Login successful for:", email);
+        console.log("================================");
 
-       res.json({
-         success: true,
-         message: "Login successful",
-         token,
-         user: userWithoutPassword,
-       });
-     } catch (error) {
-       console.error("❌ ERROR CAUGHT:", error);
-       console.error("❌ Error name:", error.name);
-       console.error("❌ Error message:", error.message);
-       console.error("❌ Error stack:", error.stack);
+        res.json({
+          success: true,
+          message: "Login successful",
+          token,
+          user: userWithoutPassword,
+        });
+      } catch (error) {
+        console.error("❌ ERROR CAUGHT:", error);
+        console.error("❌ Error name:", error.name);
+        console.error("❌ Error message:", error.message);
+        console.error("❌ Error stack:", error.stack);
 
-       res.status(500).json({
-         success: false,
-         message: "Login failed",
-         error: error.message,
-       });
-     }
-   });
+        res.status(500).json({
+          success: false,
+          message: "Login failed",
+          error: error.message,
+        });
+      }
+    });
 
     // GET User by Email
     app.get("/users/:email", async (req, res) => {
@@ -353,9 +427,6 @@ async function run() {
         });
       }
     });
-
-
-
   }finally {
     // nothing
   }
@@ -365,7 +436,7 @@ run().catch(console.dir);
 
 
 
-// ================= TUITION MANAGEMENT APIs =================
+//  TUITION MANAGEMENT APIs 
 
 // 1. GET My Tuitions (Student's tuitions)
 app.get("/my-tuitions", async (req, res) => {
@@ -639,7 +710,6 @@ app.get("/tuitions/:id", async (req, res) => {
   }
 });
 
-// ================= APPLICATIONS APIs =================
 
 // GET Applied Tutors for Student's Tuitions
 app.get("/applied-tutors", async (req, res) => {
@@ -865,56 +935,71 @@ app.put("/applications/:id", async (req, res) => {
   }
 });
 
-// ================= TUITION PAYMENT APIs =================
+//  TUITION PAYMENT APIs
 
-// Create Stripe Checkout for Tuition Payment
+
 app.post("/create-tuition-payment", async (req, res) => {
   try {
+    console.log("📩 Payment request received:", req.query);
+    console.log("🔑 Stripe key exists:", !!process.env.STRIPE_SECRET_KEY);
+    console.log("📚 Collections status:", {
+      tuition: !!tuitionCollections,
+      user: !!userCollections
+    });
+
     const { studentEmail, tuitionId, tutorEmail, amount, applicationId } = req.body;
 
-    console.log("📩 Tuition payment request:", {
-      studentEmail,
-      tuitionId,
-      tutorEmail,
-      amount,
-      applicationId
-    });
-
-    // Get tuition details
-    const tuition = await tuitionCollections.findOne({
-      _id: new ObjectId(tuitionId)
-    });
-
-    if (!tuition) {
-      return res.status(404).json({
+    // Validate required fields
+    if (!studentEmail || !tuitionId || !tutorEmail || !amount || !applicationId) {
+      console.log("❌ Missing fields:", { studentEmail, tuitionId, tutorEmail, amount, applicationId });
+      return res.status(400).json({
         success: false,
-        message: "Tuition not found"
+        message: "Missing required fields"
       });
     }
 
-    // Get tutor details
-    const tutor = await userCollections.findOne({
-      email: tutorEmail
+    // Get tuition details
+    const tuition = await tuitionCollections.findOne({ 
+      _id: new ObjectId(tuitionId) 
     });
+
+    if (!tuition) {
+      console.log("❌ Tuition not found:", tuitionId);
+      return res.status(404).json({ 
+        success: false, 
+        message: "Tuition not found" 
+      });
+    }
+
+    console.log("✅ Tuition found:", tuition.subject);
+
+    // Get tutor details
+    const tutor = await userCollections.findOne({ 
+      email: tutorEmail 
+    });
+
+    console.log("✅ Tutor found:", tutor?.name || tutorEmail);
+
+    const frontendUrl = process.env.SITE_DOMAIN || "https://comfy-sprite-f71948.netlify.app";
+    console.log("🔗 Frontend URL:", frontendUrl);
 
     // Create Stripe session
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
+      payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
-            currency: 'bdt',
+            currency: "bdt",
             product_data: {
               name: `Tuition Payment - ${tuition.subject}`,
               description: `Payment for ${tutor?.name || tutorEmail}`,
-              images: [tutor?.photoURL || 'https://via.placeholder.com/150'],
             },
             unit_amount: amount * 100,
           },
           quantity: 1,
         },
       ],
-      mode: 'payment',
+      mode: "payment",
       success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}&applicationId=${applicationId}`,
       cancel_url: `${process.env.SITE_DOMAIN}/payment-cancel`,
       customer_email: studentEmail,
@@ -923,27 +1008,31 @@ app.post("/create-tuition-payment", async (req, res) => {
         tuitionId,
         studentEmail,
         tutorEmail,
-        amount: amount.toString()
-      }
+        amount: amount.toString(),
+      },
     });
 
     console.log("✅ Stripe session created:", session.id);
     console.log("🔗 Checkout URL:", session.url);
 
-    res.json({
-      success: true,
-      url: session.url
+    res.json({ 
+      success: true, 
+      url: session.url 
     });
 
   } catch (error) {
-    console.error("❌ Create tuition payment error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to create payment session",
-      error: error.message
+    console.error("❌ Payment error details:", {
+      message: error.message,
+      stack: error.stack,
+      type: error.type
+    });
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
     });
   }
 });
+
 
 // Payment Success Webhook
 app.post('/tuition-payment-success', async (req, res) => {
@@ -956,14 +1045,6 @@ app.post('/tuition-payment-success', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Session ID and Application ID are required"
-      });
-    }
-
-    // Validate session_id
-    if (typeof session_id !== 'string' || !session_id.startsWith('cs_')) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid session ID format"
       });
     }
 
@@ -989,13 +1070,19 @@ app.post('/tuition-payment-success', async (req, res) => {
       return res.json({
         success: true,
         message: "Payment already processed",
-        payment: existingPayment
+        payment: {
+          ...existingPayment,
+          _id: existingPayment._id.toString()
+        }
       });
     }
 
-    // Update application status
+    // Get metadata
+    const { applicationId: metaAppId, tuitionId, studentEmail, tutorEmail, amount } = session.metadata;
+
+    // 1. Update application status
     await applicationCollections.updateOne(
-      { _id: new ObjectId(applicationId) },
+      { _id: new ObjectId(metaAppId) },
       {
         $set: {
           status: 'approved',
@@ -1007,13 +1094,13 @@ app.post('/tuition-payment-success', async (req, res) => {
     );
     console.log("✅ Application updated");
 
-    // Update tuition status
+    // 2. Update tuition status
     await tuitionCollections.updateOne(
-      { _id: new ObjectId(session.metadata.tuitionId) },
+      { _id: new ObjectId(tuitionId) },
       {
         $set: {
           status: 'approved',
-          tutorEmail: session.metadata.tutorEmail,
+          tutorEmail: tutorEmail,
           approvedAt: new Date(),
           paymentCompleted: true
         }
@@ -1021,11 +1108,11 @@ app.post('/tuition-payment-success', async (req, res) => {
     );
     console.log("✅ Tuition updated");
 
-    // Reject other applications
+    // 3. Reject other applications
     await applicationCollections.updateMany(
       {
-        tuitionId: session.metadata.tuitionId,
-        _id: { $ne: new ObjectId(applicationId) },
+        tuitionId: tuitionId,
+        _id: { $ne: new ObjectId(metaAppId) },
         status: "pending"
       },
       {
@@ -1038,13 +1125,13 @@ app.post('/tuition-payment-success', async (req, res) => {
     );
     console.log("✅ Other applications rejected");
 
-    // Record payment
+    // 4. Record payment
     const paymentRecord = {
-      studentEmail: session.metadata.studentEmail,
-      tutorEmail: session.metadata.tutorEmail,
-      tuitionId: session.metadata.tuitionId,
-      applicationId,
-      amount: parseFloat(session.metadata.amount),
+      studentEmail,
+      tutorEmail,
+      tuitionId,
+      applicationId: metaAppId,
+      amount: parseFloat(amount),
       transactionId: session.payment_intent,
       paymentMethod: 'card',
       status: 'completed',
@@ -1055,12 +1142,20 @@ app.post('/tuition-payment-success', async (req, res) => {
     const result = await paymentsCollections.insertOne(paymentRecord);
     console.log("✅ Payment recorded:", result.insertedId);
 
+    // Get tuition details for response
+    const tuition = await tuitionCollections.findOne(
+      { _id: new ObjectId(tuitionId) },
+      { projection: { subject: 1, class: 1 } }
+    );
+
     res.json({
       success: true,
       message: "Payment processed successfully",
       payment: {
         ...paymentRecord,
-        _id: result.insertedId
+        _id: result.insertedId.toString(),
+        tuitionSubject: tuition?.subject,
+        tuitionClass: tuition?.class
       }
     });
 
@@ -1068,8 +1163,7 @@ app.post('/tuition-payment-success', async (req, res) => {
     console.error("❌ Payment success error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to process payment",
-      error: error.message
+      message: error.message
     });
   }
 });
@@ -1091,9 +1185,30 @@ app.get("/payments", async (req, res) => {
       .sort({ paymentDate: -1 })
       .toArray();
 
+    // Format payments with additional data
+    const formattedPayments = await Promise.all(
+      payments.map(async (payment) => {
+        // Get tuition details
+        const tuition = await tuitionCollections.findOne(
+          { _id: new ObjectId(payment.tuitionId) },
+          { projection: { subject: 1, class: 1 } },
+        );
+
+        return {
+          ...payment,
+          tuitionSubject: tuition?.subject || "Tuition Fee",
+          tuitionClass: tuition?.class || "N/A",
+          month: new Date(payment.paymentDate).toLocaleString("default", {
+            month: "long",
+          }),
+          year: new Date(payment.paymentDate).getFullYear(),
+        };
+      }),
+    );
+
     res.json({
       success: true,
-      data: payments,
+      data: formattedPayments,
       count: payments.length,
     });
   } catch (error) {
@@ -1151,155 +1266,10 @@ app.get("/payment-status/:applicationId", async (req, res) => {
 });
 
 
-// ================= TUITION PAYMENT + APPROVAL =================
 
-// Create Stripe Checkout for Tuition Payment
-app.post("/create-tuition-payment", async (req, res) => {
-  try {
-    const { studentEmail, tuitionId, tutorEmail, amount, applicationId } = req.body;
 
-    // Get tuition details
-    const tuition = await tuitionCollections.findOne({ 
-      _id: new ObjectId(tuitionId) 
-    });
 
-    if (!tuition) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Tuition not found" 
-      });
-    }
 
-    // Get tutor details
-    const tutor = await userCollections.findOne({ 
-      email: tutorEmail 
-    });
-
-    // Create Stripe session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'bdt',
-            product_data: {
-              name: `Tuition Payment - ${tuition.subject}`,
-              description: `Payment for ${tutor?.name || tutorEmail}`,
-              images: [tutor?.photoURL || 'https://via.placeholder.com/150'],
-            },
-            unit_amount: amount * 100, // Convert to paisa/cents
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'payment',
-      success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}&applicationId=${applicationId}`,
-      cancel_url: `${process.env.SITE_DOMAIN}/payment-cancel`,
-      customer_email: studentEmail,
-      metadata: {
-        applicationId,
-        tuitionId,
-        studentEmail,
-        tutorEmail,
-        amount: amount.toString()
-      }
-    });
-
-    res.json({ 
-      success: true, 
-      url: session.url 
-    });
-
-  } catch (error) {
-    console.error("❌ Create tuition payment error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Failed to create payment session" 
-    });
-  }
-});
-
-// Payment Success Webhook/Endpoint
-app.post('/tuition-payment-success', async (req, res) => {
-  try {
-    const { session_id, applicationId } = req.query;
-
-    // Retrieve session from Stripe
-    const session = await stripe.checkout.sessions.retrieve(session_id);
-
-    if (session.payment_status === 'paid') {
-      // Get metadata
-      const { applicationId: metaAppId, tuitionId, studentEmail, tutorEmail, amount } = session.metadata;
-
-      // 1. Update application status to 'approved'
-      await applicationCollections.updateOne(
-        { _id: new ObjectId(metaAppId) },
-        { 
-          $set: { 
-            status: 'approved',
-            paymentStatus: 'paid',
-            paidAt: new Date(),
-            transactionId: session.payment_intent
-          } 
-        }
-      );
-
-      // 2. Update tuition status
-      await tuitionCollections.updateOne(
-        { _id: new ObjectId(tuitionId) },
-        { 
-          $set: { 
-            status: 'approved',
-            tutorEmail: tutorEmail,
-            approvedAt: new Date(),
-            paymentCompleted: true
-          } 
-        }
-      );
-
-      // 3. Reject all other pending applications for this tuition
-      await applicationCollections.updateMany(
-        {
-          tuitionId: tuitionId,
-          _id: { $ne: new ObjectId(metaAppId) },
-          status: "pending"
-        },
-        {
-          $set: {
-            status: 'rejected',
-            rejectedReason: 'Another tutor was selected',
-            updatedAt: new Date()
-          }
-        }
-      );
-
-      // 4. Record payment
-      const paymentRecord = {
-        studentEmail,
-        tutorEmail,
-        tuitionId,
-        applicationId: metaAppId,
-        amount: parseFloat(amount),
-        transactionId: session.payment_intent,
-        paymentMethod: 'card',
-        status: 'completed',
-        paymentDate: new Date(),
-        createdAt: new Date()
-      };
-
-      await paymentsCollections.insertOne(paymentRecord);
-
-      // Redirect to success page
-      res.redirect(`${process.env.SITE_DOMAIN}/dashboard/applied-tutors?payment=success`);
-    } else {
-      res.redirect(`${process.env.SITE_DOMAIN}/dashboard/applied-tutors?payment=failed`);
-    }
-
-  } catch (error) {
-    console.error("❌ Payment success error:", error);
-    res.redirect(`${process.env.SITE_DOMAIN}/dashboard/applied-tutors?payment=error`);
-  }
-});
 
 // GET payment status by application
 app.get("/payment-status/:applicationId", async (req, res) => {
@@ -1324,7 +1294,7 @@ app.get("/payment-status/:applicationId", async (req, res) => {
   }
 });
 
-// ================= UPDATE USER STATUS BY EMAIL =================
+//  UPDATE USER STATUS BY EMAIL 
 app.put("/api/update-user-status", async (req, res) => {
   try {
     const { email, status } = req.body;
@@ -1406,9 +1376,9 @@ app.get("/all-tuitions", async (req, res) => {
       return res.status(500).json([]);
     }
 
-    // Get ALL tuitions  (pending, approved, rejected)
+    // Get ALL tuitions - (pending, approved, rejected)
     const tuitions = await tuitionCollections
-      .find({}) 
+      .find({})  
       .sort({ createdAt: -1 }) // Latest first
       .toArray(); 
     
@@ -1478,9 +1448,8 @@ app.get("/public-tuitions", async (req, res) => {
   }
 });
 
+// TUTOR APPLICATIONS API
 
-
-// GET Tutor's Applications
 app.get("/tutor-applications", async (req, res) => {
   try {
     const tutorEmail = req.query.tutorEmail;
@@ -1829,7 +1798,7 @@ app.get("/check-application", async (req, res) => {
   }
 });
 
-// server.js - Add these routes
+
 
 // GET All Payments for Admin
 app.get("/all-payments", async (req, res) => {
@@ -1897,7 +1866,7 @@ app.delete("/users/:email", async (req, res) => {
     });
   }
 });
-
+//  ADMIN TUITION MANAGEMENT 
 
 // GET applications for a specific tuition
 app.get("/tuition-applications/:tuitionId", async (req, res) => {
@@ -1923,12 +1892,13 @@ app.get("/tuition-applications/:tuitionId", async (req, res) => {
   }
 });
 
-// ================= START SERVER =================
+//  START SERVER 
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`📚 Database: missionscic11DB`);
   console.log(
     `📦 Collections: user,  payments, tuitions, applications`,
   );
-  
+
 });
+module.exports = app;
